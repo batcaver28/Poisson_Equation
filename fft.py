@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.fftpack import dst, idst
 from skimage import measure
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -6,48 +7,41 @@ from mpl_toolkits.mplot3d import Axes3D, art3d
 from scipy.sparse import lil_matrix, csr_matrix
 from scipy.sparse.linalg import spsolve
 
-n = 31
+n = 301
 L = 10
 h = L / (n - 1)
 
-
-def crear_matriz(n):
-    size = n**3
-    # Usamos LIL porque es eficiente para ir rellenando valores uno a uno
-    matriz = lil_matrix((size, size)) 
-    
-    for i in range(size):
-        z = i % n
-        y = (i // n) % n
-        x = (i // n**2) % n
-        
-        if x == 0 or x == n-1 or y == 0 or y == n-1 or z == 0 or z == n-1:
-            matriz[i, i] = 1
-        else:
-            matriz[i, i] = -6
-            # Vecinos
-            matriz[i, i + 1] = 1          # z + 1
-            matriz[i, i - 1] = 1          # z - 1
-            matriz[i, i + n] = 1          # y + 1
-            matriz[i, i - n] = 1          # y - 1
-            matriz[i, i + n**2] = 1       # x + 1
-            matriz[i, i - n**2] = 1       # x - 1
-            
-    return matriz.tocsr() # Convertimos a CSR para que el solver vuele
-
 def crear_densidad_puntual(n, h):
-    rho = np.zeros(n**3)
+    rho = np.zeros((n, n, n))
     p = n // 3
-    rho[p * (1 + n + n**2)] = 1 / h**3
-    rho[2 * p * (1 + n + n**2)] = 1 / h**3
+    rho[p, p, p] = 1 / h**3
+    rho[2*p, 2*p, 2*p] = 1 / h**3
     return rho
 
+def solve_poisson_dirichlet(rho, n, h):
+    
+    # DST tipo-I en cada dimensión
+    rho_hat = dst(dst(dst(rho, type=1, axis=0), type=1, axis=1), type=1, axis=2)
+    
+    # Precomputar denominadores
+    p = np.arange(1, n+1)[:,None,None]
+    q = np.arange(1, n+1)[None,:,None]
+    r = np.arange(1, n+1)[None,None,:]
+    denom = 2*(np.cos(np.pi*p/(n+1)) + np.cos(np.pi*q/(n+1)) + np.cos(np.pi*r/(n+1)) - 3)
+    
+    phi_hat = -h**2 * rho_hat / denom
+    
+    # Transformada inversa
+    phi = idst(idst(idst(phi_hat, type=1, axis=0), type=1, axis=1), type=1, axis=2)
+    
+    # Normalización DST tipo-I
+    phi /= 8 * (n + 1)**3
+    
+    return phi
 
-A = crear_matriz(n)
-b = -h**2 * crear_densidad_puntual(n, h)
+rho = crear_densidad_puntual(n, h)
 
-phi = spsolve(A, b)
-phi = phi.reshape((n, n, n))
+phi = solve_poisson_dirichlet(rho, n, h)
 
 
 
@@ -75,7 +69,7 @@ plt.gca().set_aspect('equal')
 plt.show()
 
 
-
+'''
 # -------------------------
 # Gráfico de curvas de nivel 3D
 # -------------------------
@@ -105,4 +99,4 @@ ax.set_ylabel('Y')
 ax.set_zlabel('Z')
 plt.title('Curvas de nivel 3D del potencial')
 plt.show()
-
+'''
